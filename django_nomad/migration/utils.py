@@ -34,7 +34,7 @@ def filter_migration_files(files_list):
     generic_migration_folder_list = other_migration_folders + [default_migration_folder]
     generic_migration_folder_regex = re.compile('|'.join(generic_migration_folder_list))
 
-    return list(filter(lambda f: generic_migration_folder_regex.match(f), clean_files_list))
+    return list(filter(lambda f: generic_migration_folder_regex.search(f), clean_files_list))
 
 
 def extract_migration_info_from_path(path):
