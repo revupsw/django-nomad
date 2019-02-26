@@ -20,11 +20,19 @@ class Command(BaseCommand):
     def add_arguments(self, *args):
         pass
 
-    def handle(self, *args, **kwargs):
-        if self.has_post_checkout_file():
-            raise GitHookAlreadyExists()
+    def should_update_existing_hook(self):
+        response = input('Update existing hook? [y|N] ')
+        return 'y' in response.lower()
 
-        self.copy_hook_to_post_checkout_folder()
+    def handle(self, *args, **kwargs):
+        append = False
+        if self.has_post_checkout_file():
+            if self.should_update_existing_hook():
+                append = True
+            else:
+                raise GitHookAlreadyExists()
+
+        self.copy_hook_to_post_checkout_folder(append=append)
         print('post-checkout file was created...')
 
     def has_post_checkout_file(self):
@@ -36,44 +44,26 @@ class Command(BaseCommand):
         """
         return os.path.exists(self.post_checkout_path)
 
-    def create_user_env_python_shebang(self):
-        """
-        Generate a python shebang string based on user environment (if using virtualenv for
-        instance). Source copied from `flake8/src/flake8/main/git.py`.
-
-        Returns:
-        string: the formatted shebang
-        """
-        if sys.executable is not None:
-            return sys.executable
-        return '/usr/bin/env python'
-
-    def copy_hook_to_post_checkout_folder(self):
+    def copy_hook_to_post_checkout_folder(self, append=False):
         """
         Create a post-checkout file and add content from `post-checkout.py` to it, adding the a
         shebang based on user environment to top of file.
         """
-        with open(self.post_checkout_path, 'w') as f:
-            shebang = self.create_user_env_python_shebang()
-            f.write(HOOK_TEMPLATE.format(shebang=shebang))
+        with open(self.post_checkout_path, 'w+') as f:
+            if not append:
+                f.write('#!/bin/sh')
+            f.write(HOOK_SCRIPT)
         os.chmod(self.post_checkout_path, 0o555)
 
 
-HOOK_TEMPLATE = """#!{shebang}
+HOOK_SCRIPT = """
 
-import os
-import sys
 
-if __name__ == '__main__':
-    if len(sys.argv) > 3:
-        current = sys.argv[1]
-        target = sys.argv[2]
-        is_branch = int(sys.argv[3])
+CURRENT=$1
+TARGET=$2
+IS_BRANCH=$3
 
-        if not is_branch:
-            sys.exit(0)
-        else:
-            output = os.system('python manage.py check_nomad_migrations %s %s' % (current, target))
-            if output > 0:
-                print('An error happened checking migrations.')
+if [[ "$IS_BRANCH" == 1 ]]; then
+    python manage.py check_nomad_migrations $CURRENT $TARGET || echo "An error occurred while checking migrations."
+fi
 """
